@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Los Angeles Lakers Dashboard</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background: #fff; }
+        .header {
+            background: #FDB927;
+            padding: 20px;
+            text-align: center;
+        }
+        .header h1 {
+            color: #552583;
+            margin: 0 0 10px 0;
+        }
+        .header p {
+            color: #666;
+            font-size: 18px;
+        }
+        .team-info {
+            text-align: center;
+            margin: 20px 0;
+            color: #333;
+        }
+        .stats-container {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        .stat-card {
+            text-align: center;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            min-width: 120px;
+        }
+        .stat-card h3 {
+            font-size: 36px;
+            margin: 0;
+        }
+        .stat-card p {
+            margin: 0;
+        }
+        .wins { color: #552583; }
+        .losses { color: #DC143C; }
+        .avg-points { color: #552583; }
+        .opp-points { color: #FDB927; }
+        .content {
+            padding: 20px;
+        }
+        .chart-container {
+            margin: 20px 0;
+        }
+        .footer {
+            text-align: center;
+            color: #666;
+            padding: 20px;
+        }
+        .footer a {
+            color: #552583;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        .error {
+            text-align: center;
+            padding: 40px;
+            color: #DC143C;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Los Angeles Lakers Dashboard</h1>
+        <p>2024 Season Statistics</p>
+    </div>
+    
+    <div class="team-info">
+        <p><strong>Los Angeles Lakers</strong> (LAL)</p>
+    </div>
+    
+    <div id="stats-section" class="loading">
+        <p>Loading Lakers data...</p>
+    </div>
+    
+    <div class="content">
+        <div id="scores-chart" class="chart-container"></div>
+        <div id="diff-chart" class="chart-container"></div>
+    </div>
+    
+    <div class="footer">
+        <p>Data provided by Ball Don't Lie API</p>
+        <a href="index.html">Back to Home</a>
+    </div>
+
+    <script>
+        const API_KEY = '593a23ee-fa08-44fc-bced-3c622004e575';
+        const BASE_URL = 'https://api.balldontlie.io/v1';
+        const LAKERS_TEAM_ID = 14;
+
+        async function fetchLakersGames() {
+            try {
+                const response = await fetch(
+                    `${BASE_URL}/games?team_ids[]=${LAKERS_TEAM_ID}&seasons[]=2024&per_page=25`,
+                    {
+                        headers: {
+                            'Authorization': API_KEY
+                        }
+                    }
+                );
+                
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                return data.data || [];
+            } catch (error) {
+                console.error('Error fetching games:', error);
+                throw error;
+            }
+        }
+
+        function processGames(games) {
+            const processed = {
+                dates: [],
+                lakersScores: [],
+                opponentScores: [],
+                opponents: [],
+                pointDiffs: [],
+                locations: []
+            };
+
+            games.forEach(game => {
+                const date = new Date(game.date);
+                let lakersScore, opponentScore, opponentName, location;
+
+                if (game.home_team.id === LAKERS_TEAM_ID) {
+                    lakersScore = game.home_team_score;
+                    opponentScore = game.visitor_team_score;
+                    opponentName = game.visitor_team.abbreviation;
+                    location = 'Home';
+                } else {
+                    lakersScore = game.visitor_team_score;
+                    opponentScore = game.home_team_score;
+                    opponentName = game.home_team.abbreviation;
+                    location = 'Away';
+                }
+
+                processed.dates.push(date);
+                processed.lakersScores.push(lakersScore);
+                processed.opponentScores.push(opponentScore);
+                processed.opponents.push(opponentName);
+                processed.pointDiffs.push(lakersScore - opponentScore);
+                processed.locations.push(location);
+            });
+
+            return processed;
+        }
+
+        function calculateStats(data) {
+            const wins = data.pointDiffs.filter(d => d > 0).length;
+            const losses = data.pointDiffs.length - wins;
+            const avgLakers = data.lakersScores.reduce((a, b) => a + b, 0) / data.lakersScores.length;
+            const avgOpponent = data.opponentScores.reduce((a, b) => a + b, 0) / data.opponentScores.length;
+            
+            return { wins, losses, avgLakers, avgOpponent };
+        }
+
+        function renderStats(stats) {
+            document.getElementById('stats-section').innerHTML = `
+                <div class="stats-container">
+                    <div class="stat-card">
+                        <h3 class="wins">${stats.wins}</h3>
+                        <p>Wins</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3 class="losses">${stats.losses}</h3>
+                        <p>Losses</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3 class="avg-points">${stats.avgLakers.toFixed(1)}</h3>
+                        <p>Avg Points</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3 class="opp-points">${stats.avgOpponent.toFixed(1)}</h3>
+                        <p>Opp Avg Points</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderCharts(data) {
+            const scoresTrace1 = {
+                x: data.dates,
+                y: data.lakersScores,
+                mode: 'lines+markers',
+                name: 'Lakers Score',
+                line: { color: '#552583', width: 2 },
+                marker: { size: 8 }
+            };
+
+            const scoresTrace2 = {
+                x: data.dates,
+                y: data.opponentScores,
+                mode: 'lines+markers',
+                name: 'Opponent Score',
+                line: { color: '#FDB927', width: 2 },
+                marker: { size: 8 }
+            };
+
+            const scoresLayout = {
+                title: 'Lakers vs Opponents - Game Scores Over Time',
+                xaxis: { title: 'Date' },
+                yaxis: { title: 'Score' },
+                hovermode: 'x unified'
+            };
+
+            Plotly.newPlot('scores-chart', [scoresTrace1, scoresTrace2], scoresLayout);
+
+            const colors = data.pointDiffs.map(d => d > 0 ? '#552583' : '#DC143C');
+            
+            const diffTrace = {
+                x: data.dates,
+                y: data.pointDiffs,
+                type: 'bar',
+                marker: { color: colors },
+                text: data.opponents.map(opp => `vs ${opp}`),
+                hovertemplate: '<b>%{text}</b><br>Point Diff: %{y}<extra></extra>'
+            };
+
+            const diffLayout = {
+                title: 'Win/Loss Point Differential (Purple = Win, Red = Loss)',
+                xaxis: { title: 'Date' },
+                yaxis: { title: 'Point Differential' },
+                shapes: [{
+                    type: 'line',
+                    x0: data.dates[0],
+                    x1: data.dates[data.dates.length - 1],
+                    y0: 0,
+                    y1: 0,
+                    line: { color: 'gray', dash: 'dash' }
+                }]
+            };
+
+            Plotly.newPlot('diff-chart', [diffTrace], diffLayout);
+        }
+
+        function showError(message) {
+            document.getElementById('stats-section').innerHTML = `
+                <div class="error">
+                    <p>${message}</p>
+                    <p>Please try again later.</p>
+                </div>
+            `;
+        }
+
+        async function init() {
+            try {
+                const games = await fetchLakersGames();
+                
+                if (games.length === 0) {
+                    showError('No game data available.');
+                    return;
+                }
+
+                const processedData = processGames(games);
+                const stats = calculateStats(processedData);
+                
+                renderStats(stats);
+                renderCharts(processedData);
+            } catch (error) {
+                showError('Could not load Lakers data. The API may be temporarily unavailable.');
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>
